@@ -47,7 +47,7 @@ async function handleMapRoute(id) {
   }
 }
 
-// Handle /player/:id endpoint
+// Handle /player/:id endpointx
 async function handlePlayerRoute(id) {
   try {
     const url = `${playerDataURL}${id}`;
