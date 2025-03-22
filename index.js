@@ -1,114 +1,110 @@
-const express = require('express');
-const cors = require('cors');
 const fetch = require('node-fetch');
-const app = express();
-const port = process.env.PORT || 3000;
 
-// Enable CORS for all routes
-app.use(cors());
-
-// Parse JSON bodies
-app.use(express.json());
-
+// Data URLs
 const playerDataURL = "http://159.69.165.169:8000/maps/world/live/players.json?857372";
 const mapDataURL = "http://159.69.165.169:8000/maps/world/markers.json?";
 
-// Map endpoint
-app.get('/map/:id', async (req, res) => {
-  try {
-    await fetchAndForward(req, res, mapDataURL, "map");
-  } catch (err) {
-    res.status(500).send(`Error fetching data: ${err.message}`);
+exports.handler = async function (event, context) {
+  const path = event.path;
+  
+  // Handle /map/:id route
+  if (path.startsWith('/map/')) {
+    const id = event.pathParameters.id;
+    return await handleMapRoute(id);
   }
-});
-
-// Player endpoint
-app.get('/player/:id', async (req, res) => {
-  try {
-    await fetchAndForward(req, res, playerDataURL, "player");
-  } catch (err) {
-    res.status(500).send(`Error fetching data: ${err.message}`);
+  
+  // Handle /player/:id route
+  if (path.startsWith('/player/')) {
+    const id = event.pathParameters.id;
+    return await handlePlayerRoute(id);
   }
-});
-
-// Combined data endpoint
-app.get('/data', async (req, res) => {
-  try {
-    await fetchCombinedData(req, res);
-  } catch (err) {
-    res.status(500).send(`Error fetching combined data: ${err.message}`);
+  
+  // Handle /data route
+  if (path === '/data') {
+    return await handleCombinedDataRoute();
   }
-});
+  
+  return {
+    statusCode: 404,
+    body: JSON.stringify({ message: 'Route not found' })
+  };
+};
 
-async function fetchAndForward(req, res, targetURL, type) {
+// Handle /map/:id endpoint
+async function handleMapRoute(id) {
   try {
-    const headers = {
-      'User-Agent': 'Node-Express-Server'
+    const url = `${mapDataURL}${id}`;
+    const data = await fetchData(url);
+    return {
+      statusCode: 200,
+      body: JSON.stringify(cleanMapData(data)),
     };
-    
-    const fetchOptions = {
-      method: 'GET',
-      headers: headers,
-      redirect: 'follow'
-    };
-    
-    const response = await fetch(targetURL, fetchOptions);
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Status ${response.status}: ${errorText}`);
-    }
-
-    const data = await response.json();
-    
-    if (type === "map") {
-      res.json(cleanMapData(data));
-    } else {
-      res.json(data);
-    }
   } catch (err) {
-    res.status(500).send(`Error fetching data: ${err.message}`);
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ error: `Error fetching map data: ${err.message}` }),
+    };
   }
 }
 
-async function fetchCombinedData(req, res) {
+// Handle /player/:id endpoint
+async function handlePlayerRoute(id) {
   try {
-    const headers = {
-      'User-Agent': 'Node-Express-Server'
+    const url = `${playerDataURL}${id}`;
+    const data = await fetchData(url);
+    return {
+      statusCode: 200,
+      body: JSON.stringify(data),
     };
-    
-    const fetchOptions = {
-      method: 'GET',
-      headers: headers,
-      redirect: 'follow'
+  } catch (err) {
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ error: `Error fetching player data: ${err.message}` }),
     };
-    
-    const playerResponse = await fetch(playerDataURL, fetchOptions);
-    if (!playerResponse.ok) {
-      const errorText = await playerResponse.text();
-      throw new Error(`Player data error ${playerResponse.status}: ${errorText}`);
-    }
-    const playerData = await playerResponse.json();
-    
-    const mapResponse = await fetch(mapDataURL, fetchOptions);
-    if (!mapResponse.ok) {
-      const errorText = await mapResponse.text();
-      throw new Error(`Map data error ${mapResponse.status}: ${errorText}`);
-    }
-    const mapData = await mapResponse.json();
+  }
+}
+
+// Handle /data endpoint (combined map and player data)
+async function handleCombinedDataRoute() {
+  try {
+    const playerData = await fetchData(playerDataURL);
+    const mapData = await fetchData(mapDataURL);
     const cleanedMapData = cleanMapData(mapData);
 
-    const combinedData = {
-      players: playerData,
-      map: cleanedMapData
+    return {
+      statusCode: 200,
+      body: JSON.stringify({
+        players: playerData,
+        map: cleanedMapData,
+      }),
     };
-
-    res.json(combinedData);
   } catch (err) {
-    res.status(500).send(`Error fetching combined data: ${err.message}`);
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ error: `Error fetching combined data: ${err.message}` }),
+    };
   }
 }
 
+// Fetch data from an external URL
+async function fetchData(url) {
+  try {
+    const headers = {
+      'User-Agent': 'Netlify-Serverless-Function',
+    };
+
+    const response = await fetch(url, { headers });
+    if (!response.ok) {
+      throw new Error(`Status ${response.status}: ${response.statusText}`);
+    }
+
+    return await response.json();
+  } catch (err) {
+    throw new Error(`Error fetching data: ${err.message}`);
+  }
+}
+
+// Clean up map data before returning it
 function cleanMapData(data) {
   const cleanedMarkers = {};
   const markers = data["me.angeschossen.lands"].markers;
@@ -122,10 +118,6 @@ function cleanMapData(data) {
       };
     }
   }
+
   return { markers: cleanedMarkers };
 }
-
-// Start the server
-app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
-});
