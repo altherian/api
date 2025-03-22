@@ -1,18 +1,31 @@
 const http = require('http');
 const https = require('https');
-const url = require('url');
 const { Buffer } = require('buffer');
 
 const playerDataURL = "http://159.69.165.169:8000/maps/world/live/players.json?857372";
 const mapDataURL = "http://159.69.165.169:8000/maps/world/markers.json?";
 
-// Lambda handler function
+// Netlify function handler
 exports.handler = async (event, context) => {
+  console.log('Event received:', JSON.stringify(event, null, 2));
+  
   try {
-    const path = event.path || '/';
+    // Netlify passes the path after the function name in the path parameter
+    // Extract the path, removing the function name if present
+    let path = event.path || '/';
+    
+    // If the path includes the function name (/api), remove it
+    // This handles both /api and /.netlify/functions/api formats
+    const apiPathMatch = path.match(/\/(?:\.netlify\/functions\/)?api(\/.*)?$/);
+    if (apiPathMatch) {
+      path = apiPathMatch[1] || '/';
+    }
+    
+    console.log('Processed path:', path);
+    
     const method = event.httpMethod || 'GET';
     
-    // Create a pseudo-request object similar to Node.js http request
+    // Create a pseudo-request object
     const req = {
       method: method,
       url: path,
@@ -38,14 +51,14 @@ exports.handler = async (event, context) => {
     // Handle the request
     await handleAPIRequest(req, res, path);
     
-    // Return the response in the format expected by Lambda
+    // Return the response in the format expected by Netlify Functions
     return {
       statusCode: res.statusCode,
       headers: res.headers,
       body: res.body
     };
   } catch (error) {
-    console.error('Lambda error:', error);
+    console.error('Function error:', error);
     return {
       statusCode: 500,
       headers: {
@@ -58,43 +71,79 @@ exports.handler = async (event, context) => {
 };
 
 async function handleAPIRequest(req, res, path) {
+  console.log('Handling API request for path:', path);
+  
+  // For debugging purposes, return path info if requested
+  if (path === '/debug') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ 
+      message: 'Debug info', 
+      path: path,
+      request: {
+        method: req.method,
+        url: req.url,
+        headers: req.headers
+      }
+    }));
+    return;
+  }
+  
   const mapRegex = /^\/map\/(\d+)$/;
   const playerRegex = /^\/player\/(\d+)$/;
   const combinedDataRegex = /^\/data$/;  
 
   const mapMatch = path.match(mapRegex);
   if (mapMatch) {
+    console.log('Map data requested');
     await fetchAndForward(req, res, mapDataURL, "map");
     return;
   }
 
   const playerMatch = path.match(playerRegex);
   if (playerMatch) {
+    console.log('Player data requested');
     await fetchAndForward(req, res, playerDataURL, "player");
     return;
   }
 
   const combinedMatch = path.match(combinedDataRegex);
   if (combinedMatch) {
+    console.log('Combined data requested');
     await fetchCombinedData(req, res);
     return;
   }
 
   // Handle preflight OPTIONS requests for CORS
   if (req.method === 'OPTIONS') {
+    console.log('CORS preflight request');
     sendCorsResponse(res);
     return;
   }
 
-  res.writeHead(404, { 'Content-Type': 'text/plain' });
-  res.end('Not Found');
+  // Check if this is the root path, if so return basic info
+  if (path === '/' || path === '') {
+    console.log('Root path requested, sending API info');
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      message: 'API is running',
+      endpoints: ['/map/:id', '/player/:id', '/data', '/debug']
+    }));
+    return;
+  }
+
+  console.log('No matching route found for:', path);
+  res.writeHead(404, { 
+    'Content-Type': 'text/plain',
+    'Access-Control-Allow-Origin': '*'
+  });
+  res.end(`Not Found: ${path}`);
 }
 
 async function fetchAndForward(req, res, targetURL, type) {
   try {
     const options = {
       headers: {
-        'User-Agent': 'Node-Server',
+        'User-Agent': 'Netlify-Function',
       },
       timeout: 5000
     };
@@ -111,6 +160,7 @@ async function fetchAndForward(req, res, targetURL, type) {
     
     sendJsonResponse(res, responseData);
   } catch (err) {
+    console.error('Error in fetchAndForward:', err);
     res.writeHead(500, {
       'Content-Type': 'text/plain',
       'Access-Control-Allow-Origin': '*'
@@ -123,12 +173,13 @@ async function fetchCombinedData(req, res) {
   try {
     const options = {
       headers: {
-        'User-Agent': 'Node-Server',
+        'User-Agent': 'Netlify-Function',
       },
       timeout: 5000
     };
     
     // Fetch player data
+    console.log('Fetching player data from:', playerDataURL);
     const playerResponse = await nodeFetch(playerDataURL, options);
     if (playerResponse.statusCode < 200 || playerResponse.statusCode >= 300) {
       throw new Error(`Player data error ${playerResponse.statusCode}: ${playerResponse.statusMessage}`);
@@ -136,6 +187,7 @@ async function fetchCombinedData(req, res) {
     const playerData = JSON.parse(playerResponse.body);
     
     // Fetch map data
+    console.log('Fetching map data from:', mapDataURL);
     const mapResponse = await nodeFetch(mapDataURL, options);
     if (mapResponse.statusCode < 200 || mapResponse.statusCode >= 300) {
       throw new Error(`Map data error ${mapResponse.statusCode}: ${mapResponse.statusMessage}`);
@@ -150,6 +202,7 @@ async function fetchCombinedData(req, res) {
 
     sendJsonResponse(res, combinedData);
   } catch (err) {
+    console.error('Error in fetchCombinedData:', err);
     res.writeHead(500, {
       'Content-Type': 'text/plain',
       'Access-Control-Allow-Origin': '*'
