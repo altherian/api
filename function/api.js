@@ -3,7 +3,7 @@ const https = require('https');
 const { Buffer } = require('buffer');
 
 const playerDataURL = "http://159.69.165.169:8000/maps/world/live/players.json?857372";
-const mapDataURL = "http://159.69.165.169:8000/maps/world/markers.json?";
+const mapDataURL = "http://159.69.165.169:8000/maps/world/live/markers.json?835023";
 
 // Netlify function handler
 exports.handler = async (event, context) => {
