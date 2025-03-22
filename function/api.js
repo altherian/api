@@ -1,6 +1,3 @@
-const fetch = require('node-fetch');
-
-// Data URLs
 const playerDataURL = "http://159.69.165.169:8000/maps/world/live/players.json?857372";
 const mapDataURL = "http://159.69.165.169:8000/maps/world/markers.json?";
 
