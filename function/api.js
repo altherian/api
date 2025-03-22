@@ -6,30 +6,56 @@ const { Buffer } = require('buffer');
 const playerDataURL = "http://159.69.165.169:8000/maps/world/live/players.json?857372";
 const mapDataURL = "http://159.69.165.169:8000/maps/world/markers.json?";
 
-// Create HTTP server
-const server = http.createServer(async (req, res) => {
-  const parsedUrl = url.parse(req.url, true);
-  const path = parsedUrl.pathname;
-  
+// Lambda handler function
+exports.handler = async (event, context) => {
   try {
+    const path = event.path || '/';
+    const method = event.httpMethod || 'GET';
+    
+    // Create a pseudo-request object similar to Node.js http request
+    const req = {
+      method: method,
+      url: path,
+      headers: event.headers || {},
+    };
+    
+    // Create a response object to collect the response data
+    const res = {
+      statusCode: 200,
+      headers: {},
+      body: '',
+      
+      writeHead: function(statusCode, headers) {
+        this.statusCode = statusCode;
+        this.headers = { ...this.headers, ...headers };
+      },
+      
+      end: function(body) {
+        this.body = body;
+      }
+    };
+    
+    // Handle the request
     await handleAPIRequest(req, res, path);
+    
+    // Return the response in the format expected by Lambda
+    return {
+      statusCode: res.statusCode,
+      headers: res.headers,
+      body: res.body
+    };
   } catch (error) {
-    console.error('Server error:', error);
-    res.writeHead(500, {
-      'Content-Type': 'text/plain',
-      'Access-Control-Allow-Origin': '*'
-    });
-    res.end(`Error: ${error.message}`);
+    console.error('Lambda error:', error);
+    return {
+      statusCode: 500,
+      headers: {
+        'Content-Type': 'text/plain',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: `Error: ${error.message}`
+    };
   }
-});
-
-// Port configuration - you can change this or use environment variables
-const PORT = process.env.PORT || 3000;
-
-// Start the server
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+};
 
 async function handleAPIRequest(req, res, path) {
   const mapRegex = /^\/map\/(\d+)$/;
