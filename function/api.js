@@ -1,5 +1,4 @@
-const http = require('http');
-const https = require('https');
+const fetch = require('node-fetch');  // Importing node-fetch for HTTP requests
 const { Buffer } = require('buffer');
 
 const playerDataURL = "http://159.69.165.169:8000/maps/world/live/players.json?857372";
@@ -8,49 +7,49 @@ const mapDataURL = "http://159.69.165.169:8000/maps/world/live/markers.json?8350
 // Netlify function handlers
 exports.handler = async (event, context) => {
   console.log('Event received:', JSON.stringify(event, null, 2));
-  
+
   try {
     // Netlify passes the path after the function name in the path parameter
     // Extract the path, removing the function name if present
     let path = event.path || '/';
-    
+
     // If the path includes the function name (/api), remove it
     // This handles both /api and /.netlify/functions/api formats
     const apiPathMatch = path.match(/\/(?:\.netlify\/functions\/)?api(\/.*)?$/);
     if (apiPathMatch) {
       path = apiPathMatch[1] || '/';
     }
-    
+
     console.log('Processed path:', path);
-    
+
     const method = event.httpMethod || 'GET';
-    
+
     // Create a pseudo-request object
     const req = {
       method: method,
       url: path,
       headers: event.headers || {},
     };
-    
+
     // Create a response object to collect the response data
     const res = {
       statusCode: 200,
       headers: {},
       body: '',
-      
+
       writeHead: function(statusCode, headers) {
         this.statusCode = statusCode;
         this.headers = { ...this.headers, ...headers };
       },
-      
+
       end: function(body) {
         this.body = body;
       }
     };
-    
+
     // Handle the request
     await handleAPIRequest(req, res, path);
-    
+
     // Return the response in the format expected by Netlify Functions
     return {
       statusCode: res.statusCode,
@@ -72,7 +71,7 @@ exports.handler = async (event, context) => {
 
 async function handleAPIRequest(req, res, path) {
   console.log('Handling API request for path:', path);
-  
+
   // For debugging purposes, return path info if requested
   if (path === '/debug') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -84,10 +83,10 @@ async function handleAPIRequest(req, res, path) {
         url: req.url,
         headers: req.headers
       }
-    }));
+    }, null, 2)); // Pretty-print the debug info
     return;
   }
-  
+
   const mapRegex = /^\/map\/(\d+)$/;
   const playerRegex = /^\/player\/(\d+)$/;
   const combinedDataRegex = /^\/data$/;  
@@ -127,7 +126,7 @@ async function handleAPIRequest(req, res, path) {
     res.end(JSON.stringify({
       message: 'API is running',
       endpoints: ['/map/:id', '/player/:id', '/data', '/debug']
-    }));
+    }, null, 2)); // Pretty-print the root response
     return;
   }
 
@@ -147,17 +146,17 @@ async function fetchAndForward(req, res, targetURL, type) {
       },
       timeout: 5000
     };
+
+    // Use node-fetch to fetch data from target URL
+    const response = await fetch(targetURL, options);
     
-    // Use custom fetch implementation
-    const response = await nodeFetch(targetURL, options);
-    
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw new Error(`Status ${response.statusCode}: ${response.statusMessage}`);
+    if (!response.ok) {
+      throw new Error(`Status ${response.status}: ${response.statusText}`);
     }
 
-    const data = JSON.parse(response.body);
-    const responseData = type === "map" ? (data) : data;
-    
+    const data = await response.json();
+    const responseData = type === "map" ? cleanMapData(data) : data;
+
     sendJsonResponse(res, responseData);
   } catch (err) {
     console.error('Error in fetchAndForward:', err);
@@ -177,23 +176,21 @@ async function fetchCombinedData(req, res) {
       },
       timeout: 5000
     };
-    
+
     // Fetch player data
-    console.log('Fetching player data from:', playerDataURL);
-    const playerResponse = await nodeFetch(playerDataURL, options);
-    if (playerResponse.statusCode < 200 || playerResponse.statusCode >= 300) {
-      throw new Error(`Player data error ${playerResponse.statusCode}: ${playerResponse.statusMessage}`);
+    const playerResponse = await fetch(playerDataURL, options);
+    if (!playerResponse.ok) {
+      throw new Error(`Player data error ${playerResponse.status}: ${playerResponse.statusText}`);
     }
-    const playerData = JSON.parse(playerResponse.body);
+    const playerData = await playerResponse.json();
     
     // Fetch map data
-    console.log('Fetching map data from:', mapDataURL);
-    const mapResponse = await nodeFetch(mapDataURL, options);
-    if (mapResponse.statusCode < 200 || mapResponse.statusCode >= 300) {
-      throw new Error(`Map data error ${mapResponse.statusCode}: ${mapResponse.statusMessage}`);
+    const mapResponse = await fetch(mapDataURL, options);
+    if (!mapResponse.ok) {
+      throw new Error(`Map data error ${mapResponse.status}: ${mapResponse.statusText}`);
     }
-    const mapData = JSON.parse(mapResponse.body);
-    const cleanedMapData = (mapData);
+    const mapData = await mapResponse.json();
+    const cleanedMapData = cleanMapData(mapData);
 
     const combinedData = {
       players: playerData,
@@ -238,4 +235,9 @@ function cleanMapData(data) {
     }
   }
   return { markers: cleanedMarkers };
+}
+
+function sendJsonResponse(res, data) {
+  res.writeHead(200, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify(data, null, 2)); // Pretty-print the response data
 }
