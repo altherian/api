@@ -1,1 +1,15 @@
-npm install node-fetch
+{
+  "name": "your-project",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "dependencies": {
+    "node-fetch": "^2.6.1",  // Add this line
+    // other dependencies
+  },
+  "devDependencies": {},
+  "scripts": {
+    "start": "your-start-script"
+  },
+  "engines": {
+    "node
