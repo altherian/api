@@ -159,6 +159,3 @@ function cleanMapData(data) {
   }
   return { markers: cleanedMarkers };
 }
-
-  });
-}
