@@ -156,7 +156,7 @@ async function fetchAndForward(req, res, targetURL, type) {
     }
 
     const data = JSON.parse(response.body);
-    const responseData = type === "map" ? cleanMapData(data) : data;
+    const responseData = type === "map" ? (data) : data;
     
     sendJsonResponse(res, responseData);
   } catch (err) {
@@ -193,7 +193,7 @@ async function fetchCombinedData(req, res) {
       throw new Error(`Map data error ${mapResponse.statusCode}: ${mapResponse.statusMessage}`);
     }
     const mapData = JSON.parse(mapResponse.body);
-    const cleanedMapData = cleanMapData(mapData);
+    const cleanedMapData = (mapData);
 
     const combinedData = {
       players: playerData,
@@ -222,74 +222,20 @@ function cleanMapData(data) {
         detail: marker.detail.replace(/<[^>]+>/g, "").trim(),
         positions: Array.isArray(marker.position) ? marker.position : [marker.position],
       };
+    } 
+    // If the marker has a "shape", then we want to include all of its coordinates (multiple points)
+    else if (markers[key].shape) {
+      const shapeCoordinates = markers[key].shape.map(point => ({
+        x: point.x,
+        y: markers[key].shapeY, // assuming shapeY is the height (Y coordinate)
+        z: point.z
+      }));
+      
+      cleanedMarkers[key] = {
+        detail: markers[key].detail.replace(/<[^>]+>/g, "").trim(),
+        positions: shapeCoordinates, // This will include all the points of the shape
+      };
     }
   }
   return { markers: cleanedMarkers };
-}
-
-function sendJsonResponse(res, data) {
-  res.writeHead(200, {
-    'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': '*',
-    'Cache-Control': 'no-cache, no-store, must-revalidate'
-  });
-  res.end(JSON.stringify(data));
-}
-
-function sendCorsResponse(res) {
-  res.writeHead(204, {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': '*',
-    'Access-Control-Max-Age': '86400'
-  });
-  res.end();
-}
-
-// Custom fetch implementation for Node.js using http/https modules
-function nodeFetch(url, options = {}) {
-  return new Promise((resolve, reject) => {
-    const parsedUrl = new URL(url);
-    const protocol = parsedUrl.protocol === 'https:' ? https : http;
-    
-    const requestOptions = {
-      hostname: parsedUrl.hostname,
-      port: parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80),
-      path: parsedUrl.pathname + parsedUrl.search,
-      method: options.method || 'GET',
-      headers: options.headers || {},
-      timeout: options.timeout || 30000
-    };
-
-    const req = protocol.request(requestOptions, (res) => {
-      let data = [];
-      
-      res.on('data', (chunk) => {
-        data.push(chunk);
-      });
-      
-      res.on('end', () => {
-        const body = Buffer.concat(data).toString();
-        resolve({
-          statusCode: res.statusCode,
-          statusMessage: res.statusMessage,
-          headers: res.headers,
-          body: body
-        });
-      });
-    });
-    
-    req.on('error', (err) => {
-      reject(err);
-    });
-    
-    req.on('timeout', () => {
-      req.destroy();
-      reject(new Error('Request timeout'));
-    });
-    
-    req.end();
-  });
 }
