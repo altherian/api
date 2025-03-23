@@ -2,10 +2,10 @@ const http = require('http');
 const https = require('https');
 const { Buffer } = require('buffer');
 
-const playerDataURL = "http://159.69.165.169:8000/maps/world/live/players.json?";
-const mapDataURL = "http://159.69.165.169:8000/maps/world/markers.json?";
+const playerDataURL = "http://159.69.165.169:8000/maps/world/live/players.json?857372";
+const mapDataURL = "http://159.69.165.169:8000/maps/world/live/markers.json?835023";
 
-// Netlify function handler
+// Netlify function handlers
 exports.handler = async (event, context) => {
   console.log('Event received:', JSON.stringify(event, null, 2));
   
@@ -84,7 +84,7 @@ async function handleAPIRequest(req, res, path) {
         url: req.url,
         headers: req.headers
       }
-    }, null, 2));  // Pretty print with 2 spaces
+    }));
     return;
   }
   
@@ -127,7 +127,7 @@ async function handleAPIRequest(req, res, path) {
     res.end(JSON.stringify({
       message: 'API is running',
       endpoints: ['/map/:id', '/player/:id', '/data', '/debug']
-    }, null, 2));  // Pretty print with 2 spaces
+    }));
     return;
   }
 
@@ -235,8 +235,7 @@ function sendJsonResponse(res, data) {
     'Access-Control-Allow-Headers': '*',
     'Cache-Control': 'no-cache, no-store, must-revalidate'
   });
-  // Pretty print JSON with 2-space indentation
-  res.end(JSON.stringify(data, null, 2));
+  res.end(JSON.stringify(data));
 }
 
 function sendCorsResponse(res) {
