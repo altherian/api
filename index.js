@@ -145,70 +145,17 @@ async function fetchData(url) {
 }
 
 function cleanMapData(data) {
-  try {
-    if (!data || !data["me.angeschossen.lands"] || !data["me.angeschossen.lands"].markers) {
-      console.error("Invalid map data structure:", JSON.stringify(data).substring(0, 200));
-      return { markers: {} };
+  const cleanedMarkers = {};
+  const markers = data["me.angeschossen.lands"].markers;
+
+  for (const key in markers) {
+    if (markers[key].detail && markers[key].position) {
+      const marker = markers[key];
+      cleanedMarkers[key] = {
+        detail: marker.detail.replace(/<[^>]+>/g, "").trim(),
+        positions: Array.isArray(marker.position) ? marker.position : [marker.position],
+      };
     }
-    
-    const cleanedMarkers = {};
-    const markers = data["me.angeschossen.lands"].markers;
-    
-    for (const key in markers) {
-      if (markers[key] && markers[key].detail) {
-        const marker = markers[key];
-        
-        let positions = [];
-
-        // Handle different position formats
-        if (marker.position) {
-          if (Array.isArray(marker.position)) {
-            // It's already an array, use it as-is
-            positions = marker.position;
-          } else if (typeof marker.position === "object") {
-            // If it's a single object, wrap it in an array
-            positions = [marker.position];
-          }
-        }
-
-        // Check if there is an extra 'positions' field that contains more coordinates
-        if (marker.positions) {
-          if (Array.isArray(marker.positions)) {
-            // Append the extra positions
-            positions = positions.concat(marker.positions);
-          } else if (typeof marker.positions === "object") {
-            positions.push(marker.positions);
-          }
-        }
-
-        // Remove duplicates, in case the same coordinates are stored in different fields
-        positions = positions.filter(
-          (pos, index, self) =>
-            index === self.findIndex(p => p.x === pos.x && p.y === pos.y && p.z === pos.z)
-        );
-
-        if (positions.length > 0) {
-          cleanedMarkers[key] = {
-            detail: typeof marker.detail === 'string' ? 
-              marker.detail.replace(/<[^>]+>/g, "").trim() : 
-              String(marker.detail),
-            positions: positions // Always contains all available coordinates
-          };
-        }
-      }
-    }
-    
-    return { markers: cleanedMarkers };
-  } catch (err) {
-    console.error("Error cleaning map data:", err);
-    return { markers: {}, error: err.message };
   }
-}
-
-    
-    return { markers: cleanedMarkers };
-  } catch (err) {
-    console.error("Error cleaning map data:", err);
-    return { markers: {}, error: err.message };
-  }
+  return { markers: cleanedMarkers };
 }
