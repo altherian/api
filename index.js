@@ -9,13 +9,13 @@ exports.handler = async function (event, context) {
   
   // Handle /map/:id route
   if (path.startsWith('/map/')) {
-    const id = event.pathParameters.id;
+    const id = event.pathParameters?.id || '1';
     return await handleMapRoute(id);
   }
   
   // Handle /player/:id route
   if (path.startsWith('/player/')) {
-    const id = event.pathParameters.id;
+    const id = event.pathParameters?.id || '1';
     return await handlePlayerRoute(id);
   }
   
@@ -35,31 +35,57 @@ async function handleMapRoute(id) {
   try {
     const url = `${mapDataURL}${id}`;
     const data = await fetchData(url);
+    const cleanedData = cleanMapData(data);
+    
     return {
       statusCode: 200,
-      body: JSON.stringify(cleanMapData(data)),
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*' // CORS header
+      },
+      body: JSON.stringify(cleanedData, null, 2) // Pretty print with 2-space indentation
     };
   } catch (err) {
+    console.error("Map error:", err);
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: `Error fetching map data: ${err.message}` }),
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: JSON.stringify({ error: `Error fetching map data: ${err.message}` }, null, 2)
     };
   }
 }
 
-// Handle /player/:id endpointx
+// Handle /player/:id endpoint
 async function handlePlayerRoute(id) {
   try {
     const url = `${playerDataURL}${id}`;
     const data = await fetchData(url);
+    
+    // Make sure we're returning data in the expected format
+    const formattedData = {
+      players: data.players || []
+    };
+    
     return {
       statusCode: 200,
-      body: JSON.stringify(data),
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: JSON.stringify(formattedData, null, 2) // Pretty print
     };
   } catch (err) {
+    console.error("Player error:", err);
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: `Error fetching player data: ${err.message}` }),
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: JSON.stringify({ error: `Error fetching player data: ${err.message}` }, null, 2)
     };
   }
 }
@@ -70,18 +96,27 @@ async function handleCombinedDataRoute() {
     const playerData = await fetchData(playerDataURL);
     const mapData = await fetchData(mapDataURL);
     const cleanedMapData = cleanMapData(mapData);
-
+    
     return {
       statusCode: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
       body: JSON.stringify({
-        players: playerData,
-        map: cleanedMapData,
-      }),
+        players: playerData.players || [],
+        map: cleanedMapData
+      }, null, 2) // Pretty print
     };
   } catch (err) {
+    console.error("Combined data error:", err);
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: `Error fetching combined data: ${err.message}` }),
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: JSON.stringify({ error: `Error fetching combined data: ${err.message}` }, null, 2)
     };
   }
 }
@@ -92,32 +127,60 @@ async function fetchData(url) {
     const headers = {
       'User-Agent': 'Netlify-Serverless-Function',
     };
-
+    
+    console.log(`Fetching from: ${url}`);
     const response = await fetch(url, { headers });
+    
     if (!response.ok) {
       throw new Error(`Status ${response.status}: ${response.statusText}`);
     }
-
-    return await response.json();
+    
+    const data = await response.json();
+    console.log(`Data received from ${url}:`, JSON.stringify(data).substring(0, 100) + '...');
+    return data;
   } catch (err) {
+    console.error(`Fetch error for ${url}:`, err);
     throw new Error(`Error fetching data: ${err.message}`);
   }
 }
 
 // Clean up map data before returning it
 function cleanMapData(data) {
-  const cleanedMarkers = {};
-  const markers = data["me.angeschossen.lands"].markers;
-
-  for (const key in markers) {
-    if (markers[key].detail && markers[key].position) {
-      const marker = markers[key];
-      cleanedMarkers[key] = {
-        detail: marker.detail.replace(/<[^>]+>/g, "").trim(),
-        positions: Array.isArray(marker.position) ? marker.position : [marker.position],
-      };
+  try {
+    if (!data || !data["me.angeschossen.lands"] || !data["me.angeschossen.lands"].markers) {
+      console.error("Invalid map data structure:", JSON.stringify(data).substring(0, 200));
+      return { markers: {} };
     }
+    
+    const cleanedMarkers = {};
+    const markers = data["me.angeschossen.lands"].markers;
+    
+    for (const key in markers) {
+      if (markers[key] && markers[key].detail) {
+        const marker = markers[key];
+        
+        // Handle different position formats
+        let positions = [];
+        if (marker.position) {
+          positions = Array.isArray(marker.position) ? marker.position : [marker.position];
+        } else if (marker.positions) {
+          positions = Array.isArray(marker.positions) ? marker.positions : [marker.positions];
+        }
+        
+        if (positions.length > 0) {
+          cleanedMarkers[key] = {
+            detail: typeof marker.detail === 'string' ? 
+              marker.detail.replace(/<[^>]+>/g, "").trim() : 
+              String(marker.detail),
+            positions: positions
+          };
+        }
+      }
+    }
+    
+    return { markers: cleanedMarkers };
+  } catch (err) {
+    console.error("Error cleaning map data:", err);
+    return { markers: {}, error: err.message };
   }
-
-  return { markers: cleanedMarkers };
 }
